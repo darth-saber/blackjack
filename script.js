@@ -1,9 +1,16 @@
 const deckValues = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A'];
+
 let deck = [];
-let playerHand = [];
-let dealerHand = [];
+let players = [];
+let currentPlayerIndex = 0;
 let gameOver = false;
-let playerTurn = true;
+
+const playerTypes = {
+    HUMAN: 'human',
+    AI_EASY: 'ai_easy',
+    AI_MEDIUM: 'ai_medium',
+    AI_HARD: 'ai_hard',
+};
 
 function createDeck() {
     deck = [];
@@ -52,70 +59,175 @@ function renderHand(hand, elementId) {
 }
 
 function updateScores() {
-    document.getElementById('player-score').textContent = calculateScore(playerHand);
-    document.getElementById('dealer-score').textContent = calculateScore(dealerHand);
+    players.forEach(player => {
+        const scoreElement = document.getElementById(`${player.id}-score`);
+        scoreElement.textContent = calculateScore(player.hand);
+    });
 }
 
 function startGame() {
     gameOver = false;
-    playerTurn = true;
-    playerHand = [];
-    dealerHand = [];
+    currentPlayerIndex = 0;
     createDeck();
 
-    playerHand.push(deck.pop());
-    dealerHand.push(deck.pop());
-    playerHand.push(deck.pop());
-    dealerHand.push(deck.pop());
+    players = [
+        { id: 'player1', type: playerTypes.HUMAN, hand: [] },
+        { id: 'player2', type: playerTypes.HUMAN, hand: [] },
+        { id: 'ai1', type: playerTypes.AI_EASY, hand: [] },
+        { id: 'ai2', type: playerTypes.AI_MEDIUM, hand: [] },
+        { id: 'ai3', type: playerTypes.AI_HARD, hand: [] },
+        { id: 'dealer', type: 'dealer', hand: [] },
+    ];
 
-    renderHand(playerHand, 'player-cards');
-    renderHand(dealerHand, 'dealer-cards');
+    // Deal initial cards
+    players.forEach(player => {
+        player.hand = [];
+        player.hand.push(deck.pop());
+        player.hand.push(deck.pop());
+    });
+
+    renderAllHands();
     updateScores();
+    updateControls();
     document.getElementById('result').textContent = '';
-    document.getElementById('hit-btn').style.display = 'inline-block';
-    document.getElementById('stand-btn').style.display = 'inline-block';
-    document.getElementById('restart-btn').style.display = 'none';
+}
+
+function renderAllHands() {
+    players.forEach(player => {
+        renderHand(player.hand, `${player.id}-cards`);
+    });
+}
+
+function updateControls() {
+    const currentPlayer = players[currentPlayerIndex];
+    if (gameOver || currentPlayer.type === 'dealer') {
+        document.getElementById('hit-btn').style.display = 'none';
+        document.getElementById('stand-btn').style.display = 'none';
+    } else if (currentPlayer.type === playerTypes.HUMAN) {
+        document.getElementById('hit-btn').style.display = 'inline-block';
+        document.getElementById('stand-btn').style.display = 'inline-block';
+    } else {
+        document.getElementById('hit-btn').style.display = 'none';
+        document.getElementById('stand-btn').style.display = 'none';
+    }
+    document.getElementById('restart-btn').style.display = gameOver ? 'inline-block' : 'none';
 }
 
 function endGame(message) {
     gameOver = true;
     document.getElementById('result').textContent = message;
-    document.getElementById('hit-btn').style.display = 'none';
-    document.getElementById('stand-btn').style.display = 'none';
-    document.getElementById('restart-btn').style.display = 'inline-block';
+    updateControls();
 }
 
 function playerHit() {
-    if (!gameOver && playerTurn) {
-        playerHand.push(deck.pop());
-        renderHand(playerHand, 'player-cards');
+    if (gameOver) return;
+    const currentPlayer = players[currentPlayerIndex];
+    if (currentPlayer.type !== playerTypes.HUMAN) return;
+
+    currentPlayer.hand.push(deck.pop());
+    renderHand(currentPlayer.hand, `${currentPlayer.id}-cards`);
+    updateScores();
+
+    if (calculateScore(currentPlayer.hand) > 21) {
+        nextPlayer();
+    }
+}
+
+function playerStand() {
+    if (gameOver) return;
+    const currentPlayer = players[currentPlayerIndex];
+    if (currentPlayer.type !== playerTypes.HUMAN) return;
+
+    nextPlayer();
+}
+
+function nextPlayer() {
+    currentPlayerIndex++;
+    if (currentPlayerIndex >= players.length) {
+        dealerTurn();
+        return;
+    }
+    const currentPlayer = players[currentPlayerIndex];
+    if (currentPlayer.type === 'dealer') {
+        dealerTurn();
+    } else if (currentPlayer.type !== playerTypes.HUMAN) {
+        aiTurn(currentPlayer);
+    } else {
+        updateControls();
+    }
+}
+
+function aiTurn(player) {
+    // Simple AI logic based on difficulty
+    const score = calculateScore(player.hand);
+    if (score >= 21) {
+        nextPlayer();
+        return;
+    }
+
+    let hit = false;
+    switch (player.type) {
+        case playerTypes.AI_EASY:
+            hit = score < 15;
+            break;
+        case playerTypes.AI_MEDIUM:
+            hit = score < 17;
+            break;
+        case playerTypes.AI_HARD:
+            hit = score < 19;
+            break;
+    }
+
+    if (hit) {
+        player.hand.push(deck.pop());
+        renderHand(player.hand, `${player.id}-cards`);
         updateScores();
-        if (calculateScore(playerHand) > 21) {
-            endGame('Player busts! Dealer wins.');
-        }
+        setTimeout(() => aiTurn(player), 1000);
+    } else {
+        nextPlayer();
     }
 }
 
 function dealerTurn() {
-    playerTurn = false;
-    while (calculateScore(dealerHand) < 17) {
-        dealerHand.push(deck.pop());
-        renderHand(dealerHand, 'dealer-cards');
+    const dealer = players.find(p => p.type === 'dealer');
+    while (calculateScore(dealer.hand) < 17) {
+        dealer.hand.push(deck.pop());
+        renderHand(dealer.hand, `${dealer.id}-cards`);
         updateScores();
     }
-    const playerScore = calculateScore(playerHand);
-    const dealerScore = calculateScore(dealerHand);
-    if (dealerScore > 21 || playerScore > dealerScore) {
-        endGame('Player wins!');
-    } else if (dealerScore > playerScore) {
-        endGame('Dealer wins!');
-    } else {
-        endGame("It's a tie!");
-    }
+    determineWinners();
+}
+
+function determineWinners() {
+    const dealer = players.find(p => p.type === 'dealer');
+    const dealerScore = calculateScore(dealer.hand);
+
+    let results = [];
+    players.forEach(player => {
+        if (player.type === 'dealer') return;
+        const score = calculateScore(player.hand);
+        let result = '';
+        if (score > 21) {
+            result = 'Bust - Dealer wins';
+        } else if (dealerScore > 21) {
+            result = 'Player wins';
+        } else if (score > dealerScore) {
+            result = 'Player wins';
+        } else if (score < dealerScore) {
+            result = 'Dealer wins';
+        } else {
+            result = 'Tie';
+        }
+        results.push(`${player.id}: ${result}`);
+    });
+
+    document.getElementById('result').textContent = results.join(' | ');
+    gameOver = true;
+    updateControls();
 }
 
 document.getElementById('hit-btn').addEventListener('click', playerHit);
-document.getElementById('stand-btn').addEventListener('click', dealerTurn);
+document.getElementById('stand-btn').addEventListener('click', playerStand);
 document.getElementById('restart-btn').addEventListener('click', startGame);
 
 startGame();
